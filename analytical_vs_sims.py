@@ -1,10 +1,11 @@
+# %% Import modules
+
 """
 Compare analytical solution to MCX simulations for a semi-infinite medium
 with and without reflection. This is a replication of Figure 5e from 
 https://pmc.ncbi.nlm.nih.gov/articles/PMC2863034
 """
 
-# %% Import modules
 import numpy as np
 import pmcx
 from matplotlib import pyplot as plt
@@ -43,9 +44,9 @@ def cwdiffusion(mua, musp, Reff, srcpos, detpos):
     return phi
 
 # %% Set up simulation parameters
-g = 0.01               # anisotropy factor (matching the MATLAB example)
-mua = 0.005           # absorption coefficient [1/mm]
-mus = 1.0             # scattering coefficient [1/mm]
+g = 0.9               # anisotropy factor (matching the MATLAB example)
+mua = 0.02           # absorption coefficient [1/mm]
+mus = 0.67             # scattering coefficient [1/mm]
 
 def build_cfg(isreflect):
     return {
@@ -53,7 +54,7 @@ def build_cfg(isreflect):
         'vol': np.ones([60, 60, 60], dtype='uint8'),
         'tstart': 0,
         'tend': 5e-9,
-        'tstep': 1e-10,
+        'tstep': 5e-9,
         'srcpos': [30, 30, 0],
         'srcdir': [0, 0, 1],
         'prop': [
@@ -97,9 +98,13 @@ plt.semilogy(x + 1, phi_refl, 'r--', label='Diffusion (with reflection)')
 plt.semilogy(x + 1, cwf2[30, 30:, 0] * cfg2['tstep'], '+', label='MCX (with reflection)')
 
 plt.xlabel('x (mm)')
-plt.ylabel('Fluence rate in 1/(mm² s)')
+plt.ylabel('Fluence in 1/(mm²)')
 plt.legend(frameon=False)
 plt.grid(True)
 plt.title('Spatial Decay Profile (y=30, z=0)')
 plt.show()
 # %%
+plt.imshow(cwf1[:, 30, :] * cfg1['tstep'], norm='log')  # Changed to log scale
+plt.colorbar(label='Fluence (1/mm²)')
+plt.title('Fluence Cross-section (log scale)')
+plt.show()
