@@ -200,6 +200,7 @@ def simulate_depth_vs_contrast():
     )
 
     plt.tight_layout()
+    plt.savefig("depth_vs_contrast.png", dpi=300)
     plt.show()
 
 
