@@ -52,31 +52,43 @@ MU_EFF = np.sqrt(3 * ABSORPTION_COEF * (ABSORPTION_COEF + REDUCED_SCATTERING_COE
 
 
 # %%
-def green_function_forward(z):
-    """Calculate the forward Green's function for photon propagation."""
-    z0 = -1 / MU_EFF
+def green_function_forward(z, mu_a=ABSORPTION_COEF):
+    """Calculate the forward Green's function for photon propagation.
+
+    Simplified semi-infinite Green's function (Bigio & Fantini, Eq. 14.A.4),
+    valid when z >> z0 = 1/mu_s'.
+    """
+    mu_t_prime = mu_a + REDUCED_SCATTERING_COEF
+    mu_eff = np.sqrt(3 * mu_a * mu_t_prime)
+    z0 = -1 / REDUCED_SCATTERING_COEF
     return (
         -3
-        * (MU_EFF + ABSORPTION_COEF)
+        * mu_t_prime
         / (4 * np.pi)
         * 2
         * z
         * z0
-        * (MU_EFF + 1 / z)
-        * np.exp(-MU_EFF * z)
+        * (mu_eff + 1 / z)
+        * np.exp(-mu_eff * z)
         / z**2
     )
 
 
-def green_function_backward(z):
-    """Calculate the backward Green's function for photon propagation."""
-    return 2 * z / (4 * np.pi) * (MU_EFF + 1 / z) * np.exp(-MU_EFF * z) / z**2
+def green_function_backward(z, mu_a=ABSORPTION_COEF):
+    """Calculate the backward Green's function for photon propagation.
+
+    Normal flux at surface from isotropic source at depth z (Bigio & Fantini, Eq. 10.23).
+    """
+    mu_t_prime = mu_a + REDUCED_SCATTERING_COEF
+    mu_eff = np.sqrt(3 * mu_a * mu_t_prime)
+    z0 = 1 / REDUCED_SCATTERING_COEF
+    return z0 / (2 * np.pi) * (mu_eff + 1 / z) * np.exp(-mu_eff * z) / z**2
 
 
-def calc_tagged_photons(z):
+def calc_tagged_photons(z, mu_a=ABSORPTION_COEF):
     """Calculate the number of tagged photons reaching the detector."""
-    forward_loss = green_function_forward(z) * TAGGING_EFFICIENCY * FOCAL_SPOT_SIZE
-    backward_loss = green_function_backward(z) * DETECTOR_AREA
+    forward_loss = green_function_forward(z, mu_a) * TAGGING_EFFICIENCY * FOCAL_SPOT_SIZE
+    backward_loss = green_function_backward(z, mu_a) * DETECTOR_AREA
 
     return SOURCE_PHOTONS * forward_loss * backward_loss * DETECTOR_EFFICIENCY
 
@@ -85,7 +97,7 @@ def calc_cnr(n_tagged_baseline, n_tagged_contrast, n_untagged):
     """Calculate the contrast-to-noise ratio."""
     return (
         np.sqrt(2)
-        * (n_tagged_contrast - n_tagged_baseline)
+        * np.abs(n_tagged_contrast - n_tagged_baseline)
         / np.sqrt(n_tagged_baseline + n_tagged_contrast + n_untagged)
     )
 
@@ -104,7 +116,7 @@ def run_basic_analysis(depth_mm=10):
     backward_loss = green_function_backward(depth_mm) * DETECTOR_AREA
 
     # Calculate detector power and number of tagged photons
-    detected_power = SOURCE_POWER * forward_loss * backward_loss
+    detected_power = SOURCE_POWER * forward_loss * backward_loss * DETECTOR_EFFICIENCY
     tagged_photons = detected_power / PHOTON_ENERGY
 
     # Display results
@@ -145,7 +157,7 @@ def simulate_depth_vs_contrast():
     contrasts = np.linspace(1.001, 2.5, 200)
 
     # Precompute tagged photons for all depths
-    n_tagged_baseline = np.array([calc_tagged_photons(z) for z in depths_mm])
+    n_tagged_baseline = calc_tagged_photons(depths_mm)
 
     def compute_depth_for_cnr1(filter_od):
         """Compute maximum depth for CNR=1 across different contrast values."""
@@ -154,8 +166,9 @@ def simulate_depth_vs_contrast():
 
         depths_cm = []
         for contrast in contrasts:
-            # Calculate tagged photons with contrast
-            n_tagged_contrast = n_tagged_baseline * contrast
+            # Calculate tagged photons with increased absorption
+            mu_a_contrast = ABSORPTION_COEF * contrast
+            n_tagged_contrast = calc_tagged_photons(depths_mm, mu_a_contrast)
 
             # Calculate CNR for each depth
             cnr_values = calc_cnr(n_tagged_baseline, n_tagged_contrast, n_untagged)
@@ -206,5 +219,44 @@ def simulate_depth_vs_contrast():
 
 # Run the simulation
 simulate_depth_vs_contrast()
+
+
+# %% [markdown]
+# ## CNR vs. Filter OD
+
+
+# %%
+def plot_cnr_vs_od(contrast=1.1, depth_cm=2):
+    """Plot CNR as a function of filter OD for a given absorption contrast and depth."""
+    depth_mm = depth_cm * 10
+    filter_ods = np.linspace(1, 15, 1000)
+
+    n_tagged_baseline = calc_tagged_photons(depth_mm)
+    mu_a_contrast = ABSORPTION_COEF * contrast
+    n_tagged_contrast = calc_tagged_photons(depth_mm, mu_a_contrast)
+
+    cnr_values = np.array([
+        calc_cnr(n_tagged_baseline, n_tagged_contrast, calc_untagged_photons(od))
+        for od in filter_ods
+    ])
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(filter_ods, cnr_values, linewidth=2)
+    ax.axhline(y=1, color="r", linestyle="--", alpha=0.7, label="CNR = 1")
+    ax.set_xlabel("Filter Optical Density (OD)", fontsize=12)
+    ax.set_ylabel("CNR", fontsize=12)
+    ax.set_title(
+        f"CNR vs. Filter OD (contrast={contrast}, depth={depth_cm} cm)", fontsize=14
+    )
+    ax.set_yscale("log")
+    ax.grid(True, linestyle="--", alpha=0.7)
+    ax.legend(fontsize=11)
+
+    plt.tight_layout()
+    plt.savefig("cnr_vs_od.png", dpi=300)
+    plt.show()
+
+
+plot_cnr_vs_od(contrast=1.1, depth_cm=2)
 
 # %%
